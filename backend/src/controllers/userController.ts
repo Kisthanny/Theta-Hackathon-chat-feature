@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import User from '../models/User';
 import jwt from 'jsonwebtoken';
 import { verifyMessage } from 'ethers';
+import Channel from '../models/Channel';
 
 export interface AuthRequest extends Request {
     user?: jwt.JwtPayload & { walletAddress?: string };
@@ -30,7 +31,7 @@ export const createUser = async (req: AuthRequest, res: Response) => {
 
 export const getUsers = async (req: AuthRequest, res: Response) => {
     try {
-        const users = await User.find();
+        const users = await User.find({}, { walletAddress: 1, userName: 1, createdAt: 1 });
         res.status(200).send(users);
     } catch (error) {
         res.status(500).send(error);
@@ -40,7 +41,7 @@ export const getUsers = async (req: AuthRequest, res: Response) => {
 export const getUser = async (req: AuthRequest, res: Response) => {
     try {
         const { walletAddress } = req.params;
-        const user = await User.findOne({ walletAddress: ignoreCase(walletAddress) });
+        const user = await User.findOne({ walletAddress: ignoreCase(walletAddress) }, { walletAddress: 1, userName: 1, createdAt: 1 });
         if (!user) {
             return res.status(404).send();
         }
@@ -120,4 +121,18 @@ export const loginUser = async (req: Request, res: Response) => {
     });
 
     res.header('Authorization', `Bearer ${token}`).send({ token });
+};
+
+export const getUserChannels = async (req: AuthRequest, res: Response) => {
+    try {
+        // 获取当前用户的ID
+        const userId = req.user?._id;
+
+        // 查询当前用户作为成员的所有频道
+        const channels = await Channel.find({ members: userId });
+
+        res.status(200).send(channels);
+    } catch (error) {
+        res.status(500).send(error);
+    }
 };

@@ -4,6 +4,7 @@ interface IChannel extends Document {
     name: string;
     type: 'world' | 'group' | 'private';
     isVoiceEnabled: boolean;
+    owner: Types.ObjectId;
     members: Types.ObjectId[];
     createdAt?: Date;
     updatedAt?: Date;
@@ -23,9 +24,15 @@ const ChannelSchema: Schema<IChannel> = new Schema({
         type: Boolean,
         default: false,
     },
+    owner: {
+        type: Schema.Types.ObjectId,
+        ref: 'User',
+        required: true,
+    },
     members: [{
         type: Schema.Types.ObjectId,
         ref: 'User',
+        required: true,
     }]
 }, { timestamps: true });
 
