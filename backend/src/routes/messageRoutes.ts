@@ -1,13 +1,11 @@
 import { Router } from 'express';
-import { createMessage, getMessages, getMessage, updateMessage, deleteMessage } from '../controllers/messageController';
+import { createMessage, getMessages, recallMessage } from '../controllers/messageController';
 import { authenticateToken } from '../middlewares/authMiddleware';
 
 const router = Router();
 
-router.post('/', authenticateToken, createMessage);
-router.get('/', authenticateToken, getMessages);
-router.get('/:id', authenticateToken, getMessage);
-router.put('/:id', authenticateToken, updateMessage);
-router.delete('/:id', authenticateToken, deleteMessage);
+router.post('/sendMessage', authenticateToken, createMessage);
+router.get('/getMessagesFromChannel/:channelId/:size/:page', authenticateToken, getMessages);
+router.delete('/recall/:messageId', authenticateToken, recallMessage);
 
 export default router;

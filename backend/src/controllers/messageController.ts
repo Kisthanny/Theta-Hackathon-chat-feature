@@ -1,57 +1,103 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import Message from '../models/Message';
+import { AuthRequest } from "./userController";
+import Channel from '../models/Channel';
+import { Types } from 'mongoose';
 
-export const createMessage = async (req: Request, res: Response) => {
+const validateMembershipInChannel = async (userId: Types.ObjectId, channelId: string) => {
     try {
-        const message = new Message(req.body);
+        if (!userId) { return false; }
+
+        const channel = await Channel.findById(channelId);
+
+        if (!channel) { return false; }
+
+        return channel.members.includes(userId);
+    } catch (error) {
+        console.error('Error validating membership:', error);
+        return false;
+    }
+};
+
+export const createMessage = async (req: AuthRequest, res: Response) => {
+    try {
+        const { channel, content, image } = req.body;
+
+        const validateMembership = await validateMembershipInChannel(req.user?._id, channel)
+        if (!validateMembership) {
+            return res.status(403).send('You are not a member of this channel');
+        }
+
+        const message = new Message({ sender: req.user?._id, channel, content, image });
         await message.save();
+
         res.status(201).send(message);
     } catch (error) {
-        res.status(400).send(error);
+        res.status(400).send((error as Error).message);
     }
 };
 
-export const getMessages = async (req: Request, res: Response) => {
+export const getMessages = async (req: AuthRequest, res: Response) => {
     try {
-        const messages = await Message.find();
+        const { channelId, size, page } = req.params;
+        const pageSize = parseInt(size);
+        const pageNumber = parseInt(page);
+
+        const validateMembership = await validateMembershipInChannel(req.user?._id, channelId)
+        if (!validateMembership) {
+            return res.status(403).send('You are not a member of this channel');
+        }
+
+        const messages = await Message.find({ channel: channelId }, { sender: 1, channel: 1, content: 1, image: 1, createdAt: 1 })
+            .skip((pageNumber - 1) * pageSize)
+            .limit(pageSize)
+            .sort({ createdAt: -1 })
+            .populate("sender", "walletAddress userName");
+
         res.status(200).send(messages);
     } catch (error) {
-        res.status(500).send(error);
+        res.status(500).send((error as Error).message);
     }
 };
 
-export const getMessage = async (req: Request, res: Response) => {
+export const recallMessage = async (req: AuthRequest, res: Response) => {
     try {
-        const message = await Message.findById(req.params.id);
-        if (!message) {
-            return res.status(404).send();
-        }
-        res.status(200).send(message);
-    } catch (error) {
-        res.status(500).send(error);
-    }
-};
+        const { messageId } = req.params;
+        const message = await Message.findById(messageId);
 
-export const updateMessage = async (req: Request, res: Response) => {
-    try {
-        const message = await Message.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
         if (!message) {
-            return res.status(404).send();
+            return res.status(404).send('Message not found');
         }
-        res.status(200).send(message);
-    } catch (error) {
-        res.status(400).send(error);
-    }
-};
 
-export const deleteMessage = async (req: Request, res: Response) => {
-    try {
-        const message = await Message.findByIdAndDelete(req.params.id);
-        if (!message) {
-            return res.status(404).send();
+        if (message.sender.toString() !== req.user?._id) {
+            return res.status(403).send('Forbidden')
         }
-        res.status(200).send(message);
+
+        const channelId = message.channel?.toString();
+        const channel = await Channel.findById(channelId);
+        if (!channelId || !channel) {
+            return res.status(404).send('Channel not found');
+        }
+
+        const validateMembership = await validateMembershipInChannel(req.user?._id, channelId)
+        if (!validateMembership) {
+            return res.status(403).send('You are not a member of this channel');
+        }
+
+        const now = new Date();
+        if (!message.createdAt) {
+            return res.status(403).send('Cannot recall this message');
+        }
+        const messageTime = new Date(message.createdAt);
+        const timeDiff = (now.getTime() - messageTime.getTime()) / 1000; // Time difference in seconds
+
+        if (timeDiff > 120) { // Check if message creation time is greater than 2 minutes
+            return res.status(403).send('Cannot recall messages created more than 2 minutes ago');
+        }
+
+        await Message.findByIdAndDelete(messageId);
+        res.status(200).send('Message recalled successfully');
     } catch (error) {
-        res.status(500).send(error);
+        res.status(500).send((error as Error).message);
     }
 };
