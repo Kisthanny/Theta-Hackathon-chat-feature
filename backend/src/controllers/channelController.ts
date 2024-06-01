@@ -3,6 +3,20 @@ import Channel from '../models/Channel';
 import User from '../models/User';
 import { ignoreCase, AuthRequest } from './userController';
 import { uniq } from "lodash";
+import { Types } from "mongoose";
+
+const isChannelOwner = async (userId: string, channelId: string): Promise<boolean> => {
+    const channel = await Channel.findById(channelId);
+    if (channel === null) {
+        throw new Error(`Cannot find Channel by ID: ${channelId}`)
+    }
+    return channel && channel.owner.toString() === userId;
+};
+
+const validateMembershipInChannel = async (userId: Types.ObjectId, channelId: string): Promise<boolean> => {
+    const channel = await Channel.findById(channelId);
+    return channel ? channel.members.includes(userId) : false;
+};
 
 export const createChannel = async (req: AuthRequest, res: Response) => {
     try {
@@ -77,14 +91,6 @@ export const getChannel = async (req: AuthRequest, res: Response) => {
     }
 };
 
-const isChannelOwner = async (userId: string, channelId: string): Promise<boolean> => {
-    const channel = await Channel.findById(channelId);
-    if (channel === null) {
-        throw new Error(`Cannot find Channel by ID: ${channelId}`)
-    }
-    return channel && channel.owner.toString() === userId;
-};
-
 export const updateChannel = async (req: AuthRequest, res: Response) => {
     try {
         const { name } = req.body;
@@ -129,7 +135,7 @@ export const joinChannel = async (req: AuthRequest, res: Response) => {
         if (!channel) {
             return res.status(404).send('Channel not found');
         }
-        if(channel.type==='private'){
+        if (channel.type === 'private') {
             return res.status(404).send('Cannot join Private Channel')
         }
 
@@ -145,5 +151,45 @@ export const joinChannel = async (req: AuthRequest, res: Response) => {
         res.status(200).send(channel);
     } catch (error) {
         res.status(500).send(error);
+    }
+};
+
+export const muteChannel = async (req: AuthRequest, res: Response) => {
+    try {
+        const channelId = req.params.channelId;
+        const userId = req.user?._id;
+
+        const isMember = await validateMembershipInChannel(userId, channelId);
+
+        if (!isMember) {
+            return res.status(403).send('You are not a member of this channel');
+        }
+
+        // 添加静音频道
+        await User.findByIdAndUpdate(userId, { $addToSet: { mutedChannels: channelId } });
+
+        res.status(200).send('Channel muted successfully');
+    } catch (error) {
+        res.status(500).send((error as Error).message);
+    }
+};
+
+export const unmuteChannel = async (req: AuthRequest, res: Response) => {
+    try {
+        const channelId = req.params.channelId;
+        const userId = req.user?._id;
+
+        const isMember = await validateMembershipInChannel(userId, channelId);
+
+        if (!isMember) {
+            return res.status(403).send('You are not a member of this channel');
+        }
+
+        // 移除静音频道
+        await User.findByIdAndUpdate(userId, { $pull: { mutedChannels: channelId } });
+
+        res.status(200).send('Channel unmuted successfully');
+    } catch (error) {
+        res.status(500).send((error as Error).message);
     }
 };

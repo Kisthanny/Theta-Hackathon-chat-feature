@@ -3,9 +3,10 @@ import User from '../models/User';
 import jwt from 'jsonwebtoken';
 import { verifyMessage } from 'ethers';
 import Channel from '../models/Channel';
+import { Types } from "mongoose"
 
 export interface AuthRequest extends Request {
-    user?: jwt.JwtPayload & { walletAddress?: string };
+    user?: jwt.JwtPayload & { walletAddress?: string, mutedChannels?: Types.ObjectId[] };
 }
 
 export const ignoreCase = (textString: string) => {
@@ -117,7 +118,7 @@ export const loginUser = async (req: Request, res: Response) => {
     }
 
     const token = jwt.sign({ _id: user._id, walletAddress: user.walletAddress }, process.env.TOKEN_SECRET_KEY as string, {
-        expiresIn: '1h',
+        expiresIn: '24h',
     });
 
     res.header('Authorization', `Bearer ${token}`).send({ token });
@@ -127,11 +128,28 @@ export const getUserChannels = async (req: AuthRequest, res: Response) => {
     try {
         // 获取当前用户的ID
         const userId = req.user?._id;
+        const user = await User.findById(userId).select('mutedChannels');
+        if (!user) {
+            return res.status(404).send('User not found');
+        }
 
         // 查询当前用户作为成员的所有频道
-        const channels = await Channel.find({ members: userId });
+        const channels = await Channel.find({ members: userId }, { name: 1, type: 1, isVoiceEnabled: 1, owner: 1 });
 
-        res.status(200).send(channels);
+        const transformedChannels = channels.map(channel => {
+            const channelObj = channel.toObject();
+            return {
+                ...channelObj,
+                isOwner: String(channel.owner) === String(userId),
+                owner: undefined, // delete owner
+                isMuted: user.mutedChannels.some(mutedChannelId => {
+                    const channelId = channel._id as Types.ObjectId;
+                    return mutedChannelId.equals(channelId); // check if channel is muted by user
+                }),
+            }
+        })
+
+        res.status(200).send(transformedChannels);
     } catch (error) {
         res.status(500).send(error);
     }
