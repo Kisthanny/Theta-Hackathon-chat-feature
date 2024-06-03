@@ -57,6 +57,7 @@ describe("ChatRoom", () => {
         return joined;
       });
       const res = await Promise.all(promiseList);
+      console.log(`chat: ${chatRoom.address}`)
       expect(res.every((joined) => joined)).to.be.true;
     });
     it("Returns false if not joined", async () => {

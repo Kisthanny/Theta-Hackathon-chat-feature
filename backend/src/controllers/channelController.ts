@@ -4,6 +4,7 @@ import User from '../models/User';
 import { ignoreCase, AuthRequest } from './userController';
 import { uniq } from "lodash";
 import { Types } from "mongoose";
+import { getChatRoomCreator, getChatRoomFee, getChatRoomName, getUserJoined } from '../blockChainAPI/chatRoom';
 
 const isChannelOwner = async (userId: string, channelId: string): Promise<boolean> => {
     const channel = await Channel.findById(channelId);
@@ -189,6 +190,28 @@ export const unmuteChannel = async (req: AuthRequest, res: Response) => {
         await User.findByIdAndUpdate(userId, { $pull: { mutedChannels: channelId } });
 
         res.status(200).send('Channel unmuted successfully');
+    } catch (error) {
+        res.status(500).send((error as Error).message);
+    }
+};
+
+export const getChatRoom = async (req: AuthRequest, res: Response) => {
+    try {
+        const { address } = req.params
+        const name = await getChatRoomName(address);
+        const joinFee = await getChatRoomFee(address);
+        const creator = await getChatRoomCreator(address)
+        res.status(200).send({ name, joinFee, creator })
+    } catch (error) {
+        res.status(500).send((error as Error).message);
+    }
+};
+
+export const getChatRoomUserJoined = async (req: AuthRequest, res: Response) => {
+    try {
+        const { chatRoom, user } = req.params
+        const userJoined = await getUserJoined(chatRoom, user)
+        res.status(200).send({ userJoined })
     } catch (error) {
         res.status(500).send((error as Error).message);
     }

@@ -14,6 +14,7 @@ contract ChatRoom {
         roomName = _name;
         joinFee = _joinFee;
         roomCreator = msg.sender;
+        joinedUsers[msg.sender] = true;
         emit RoomCreated(_name, _joinFee, msg.sender);
     }
 
