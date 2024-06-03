@@ -2,6 +2,7 @@
 pragma solidity 0.7.6;
 
 contract ChatRoom {
+    string public chatRoomTag = 'Exo-Terra-Chat-Contract';
     string public roomName;
     uint256 public joinFee;
     address public roomCreator;

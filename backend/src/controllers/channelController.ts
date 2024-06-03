@@ -4,7 +4,7 @@ import User from '../models/User';
 import { ignoreCase, AuthRequest } from './userController';
 import { uniq } from "lodash";
 import { Types } from "mongoose";
-import { getChatRoomCreator, getChatRoomFee, getChatRoomName, getUserJoined } from '../blockChainAPI/chatRoom';
+import { getChatRoomCreator, getChatRoomFee, getChatRoomName, getUserJoined, validateChatRoom } from '../blockChainAPI/chatRoom';
 
 const isChannelOwner = async (userId: string, channelId: string): Promise<boolean> => {
     const channel = await Channel.findById(channelId);
@@ -21,7 +21,7 @@ const validateMembershipInChannel = async (userId: Types.ObjectId, channelId: st
 
 export const createChannel = async (req: AuthRequest, res: Response) => {
     try {
-        const { name, type, isVoiceEnabled, owner = req.user?.walletAddress, members } = req.body;
+        const { address, name, type, isVoiceEnabled, owner = req.user?.walletAddress, members } = req.body;
 
         // expect members => walletAddress[], unsure case
         if (!members || !Array.isArray(members)) {
@@ -51,8 +51,29 @@ export const createChannel = async (req: AuthRequest, res: Response) => {
             }
         }
 
+        // Only group channel needs to validate contract
+        if (type === 'group') {
+            if (!address) {
+                throw new Error('Missing ChatRoom contract address to create a group Channel')
+            }
+
+            // validate contract is from ChatRoom
+            const isChatRoom = await validateChatRoom(address)
+            if (!isChatRoom) {
+                throw new Error(`${address} is not a ChatRoom contract`);
+            }
+
+            // validate if ChatRoom already registered
+            const existingChannel = await Channel.findOne({ address: ignoreCase(address) });
+
+            if (existingChannel) {
+                throw new Error(`ChatRoom ${address} already registered`)
+            }
+        }
+
         // create channel
         const channel = new Channel({
+            address,
             name,
             type,
             isVoiceEnabled,
@@ -73,7 +94,7 @@ export const createChannel = async (req: AuthRequest, res: Response) => {
 
 export const getChannels = async (req: AuthRequest, res: Response) => {
     try {
-        const channels = await Channel.find({}, { name: 1, type: 1, isVoiceEnabled: 1, createdAt: 1 })
+        const channels = await Channel.find({}, { address: 1, name: 1, type: 1, isVoiceEnabled: 1, createdAt: 1 })
         res.status(200).send(channels);
     } catch (error) {
         res.status(500).send(error);
@@ -92,6 +113,7 @@ export const getChannel = async (req: AuthRequest, res: Response) => {
     }
 };
 
+// Can Only Update name
 export const updateChannel = async (req: AuthRequest, res: Response) => {
     try {
         const { name } = req.body;
@@ -104,7 +126,7 @@ export const updateChannel = async (req: AuthRequest, res: Response) => {
         if (!updatedChannel) {
             return res.status(404).send();
         }
-        res.status(200).send(updatedChannel);
+        res.status(200).send(updatedChannel.populate("members", "walletAddress userName"));
     } catch (error) {
         res.status(400).send(error);
     }
@@ -145,11 +167,19 @@ export const joinChannel = async (req: AuthRequest, res: Response) => {
             return res.status(400).send('User is already a member of this channel');
         }
 
+        // check access from blockchain when joining a group Channel
+        if (channel.type === 'group' && channel.address && req.user?.walletAddress) {
+            const isJoined = await getUserJoined(channel.address, req.user.walletAddress);
+            if (!isJoined) {
+                return res.status(403).send('Forbidden')
+            }
+        }
+
         // add user._id to members
         channel.members.push(req.user?._id);
         await channel.save();
 
-        res.status(200).send(channel);
+        res.status(200).send(channel.populate("members", "walletAddress userName"));
     } catch (error) {
         res.status(500).send(error);
     }

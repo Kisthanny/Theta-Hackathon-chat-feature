@@ -1,6 +1,7 @@
 import { Document, Schema, Types, model } from 'mongoose';
 
 interface IChannel extends Document {
+    address: string | undefined;
     name: string;
     type: 'world' | 'group' | 'private';
     isVoiceEnabled: boolean;
@@ -11,6 +12,10 @@ interface IChannel extends Document {
 }
 
 const ChannelSchema: Schema<IChannel> = new Schema({
+    address: {
+        type: String,
+        unique: true,
+    },
     name: {
         type: String,
         required: true,

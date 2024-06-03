@@ -31,3 +31,18 @@ export const getUserJoined = async (chatRoomAddress: string, userAddress: string
 
     return userJoined
 }
+
+export const validateChatRoom = async (chatRoomAddress: string) => {
+    try {
+        const TAG = 'Exo-Terra-Chat-Contract';
+        const chatRoom = new ethers.Contract(chatRoomAddress, CHATROOMABI, provider);
+        const chatRoomTag = (await chatRoom.chatRoomTag()) as (string | undefined);
+
+        return chatRoomTag === TAG
+    } catch (error) {
+        if ((error as Error).message.includes('revert')) {
+            return false;
+        }
+        throw error;
+    }
+}
